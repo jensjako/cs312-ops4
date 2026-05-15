@@ -1,0 +1,74 @@
+---
+- name: Install Docker and AWS CLI
+  dnf:
+    name:
+      - docker
+      - awscli
+    state: present
+
+- name: Enable and start Docker
+  service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Create Minecraft data directory
+  file:
+    path: "{{ data_dir }}"
+    state: directory
+    owner: ec2-user
+    group: ec2-user
+    mode: "0755"
+
+- name: Log in to ECR
+  shell: |
+    aws ecr get-login-password --region {{ aws_region }} | docker login --username AWS --password-stdin {{ ecr_repo_url }}
+  changed_when: false
+
+- name: Pull pinned Minecraft image
+  shell: docker pull {{ ecr_repo_url }}:{{ image_tag }}
+
+- name: Stop old Minecraft container if it exists
+  shell: docker stop {{ container_name }} || true
+  changed_when: false
+
+- name: Remove old Minecraft container if it exists
+  shell: docker rm {{ container_name }} || true
+  changed_when: false
+
+- name: Check for existing S3 backup
+  shell: aws s3 ls s3://{{ backup_bucket }}/minecraft-world-backup.tar.gz
+  register: backup_check
+  failed_when: false
+  changed_when: false
+
+- name: Download backup from S3 if it exists
+  shell: aws s3 cp s3://{{ backup_bucket }}/minecraft-world-backup.tar.gz /tmp/minecraft-world-backup.tar.gz
+  when: backup_check.rc == 0
+
+- name: Restore world data from S3 backup
+  shell: |
+    rm -rf /data/*
+    tar -xzf /tmp/minecraft-world-backup.tar.gz -C /
+  when: backup_check.rc == 0
+
+- name: Start Minecraft container
+  shell: |
+    docker run -d \
+      --name {{ container_name }} \
+      --restart unless-stopped \
+      -p 25565:25565 \
+      -v {{ data_dir }}:/data \
+      -e EULA=TRUE \
+      -e VERSION=1.21.1 \
+      -e MOTD="Jakob Jensen - CS312 Ops 3" \
+      -e MEMORY=1G \
+      {{ ecr_repo_url }}:{{ image_tag }}
+
+- name: Show running containers
+  shell: docker ps
+  register: docker_ps
+
+- name: Print Docker containers
+  debug:
+    var: docker_ps.stdout_lines
