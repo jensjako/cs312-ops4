@@ -1,0 +1,71 @@
+---
+- name: Configure Minecraft server
+  hosts: minecraft
+  become: true
+
+  vars:
+    aws_region: us-east-1
+    ecr_repo_url: 533267036595.dkr.ecr.us-east-1.amazonaws.com/ops3-minecraft
+    image_tag: mc-1.21.1-build1
+    backup_bucket: cs312-jensjako-ops3-mc-backups
+    container_name: minecraft
+    data_dir: /data
+
+  tasks:
+    - name: Install Docker and AWS CLI
+      dnf:
+        name:
+          - docker
+          - awscli
+        state: present
+
+    - name: Enable and start Docker
+      service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create Minecraft data directory
+      file:
+        path: "{{ data_dir }}"
+        state: directory
+        owner: ec2-user
+        group: ec2-user
+        mode: "0755"
+
+    - name: Log in to ECR
+      shell: |
+        aws ecr get-login-password --region {{ aws_region }} | docker login --username AWS --password-stdin {{ ecr_repo_url }}
+      changed_when: false
+
+    - name: Pull pinned Minecraft image
+      shell: docker pull {{ ecr_repo_url }}:{{ image_tag }}
+
+    - name: Stop old Minecraft container if it exists
+      shell: docker stop {{ container_name }} || true
+      changed_when: false
+
+    - name: Remove old Minecraft container if it exists
+      shell: docker rm {{ container_name }} || true
+      changed_when: false
+
+    - name: Start Minecraft container
+      shell: |
+        docker run -d \
+          --name {{ container_name }} \
+          --restart unless-stopped \
+          -p 25565:25565 \
+          -v {{ data_dir }}:/data \
+          -e EULA=TRUE \
+          -e VERSION=1.21.1 \
+          -e MOTD="Jakob Jensen - CS312 Ops 3" \
+          -e MEMORY=1G \
+          {{ ecr_repo_url }}:{{ image_tag }}
+
+    - name: Show running containers
+      shell: docker ps
+      register: docker_ps
+
+    - name: Print Docker containers
+      debug:
+        var: docker_ps.stdout_lines
