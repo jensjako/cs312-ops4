@@ -49,6 +49,22 @@
       shell: docker rm {{ container_name }} || true
       changed_when: false
 
+    - name: Check for existing S3 backup
+      shell: aws s3 ls s3://{{ backup_bucket }}/minecraft-world-backup.tar.gz
+      register: backup_check
+      failed_when: false
+      changed_when: false
+
+    - name: Download backup from S3 if it exists
+      shell: aws s3 cp s3://{{ backup_bucket }}/minecraft-world-backup.tar.gz /tmp/minecraft-world-backup.tar.gz
+      when: backup_check.rc == 0
+
+    - name: Restore world data from S3 backup
+      shell: |
+        rm -rf /data/*
+        tar -xzf /tmp/minecraft-world-backup.tar.gz -C /
+      when: backup_check.rc == 0
+
     - name: Start Minecraft container
       shell: |
         docker run -d \
