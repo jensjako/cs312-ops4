@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minecraft
+  namespace: minecraft
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: minecraft
+
+  strategy:
+    type: Recreate
+
+  template:
+    metadata:
+      labels:
+        app: minecraft
+
+    spec:
+      containers:
+        - name: minecraft
+
+          image: 533267036595.dkr.ecr.us-east-1.amazonaws.com/ops3-minecraft:mc-1.21.1-build1
+
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 25565
+
+          envFrom:
+            - configMapRef:
+                name: minecraft-config
+            - secretRef:
+                name: minecraft-secret
+
+          volumeMounts:
+            - name: minecraft-data
+              mountPath: /data
+
+          startupProbe:
+            tcpSocket:
+              port: 25565
+            failureThreshold: 30
+            periodSeconds: 10
+
+          readinessProbe:
+            tcpSocket:
+              port: 25565
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+          livenessProbe:
+            tcpSocket:
+              port: 25565
+            initialDelaySeconds: 90
+            periodSeconds: 20
+
+      volumes:
+        - name: minecraft-data
+          persistentVolumeClaim:
+            claimName: minecraft-data

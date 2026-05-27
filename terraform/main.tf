@@ -100,6 +100,14 @@ resource "aws_instance" "minecraft" {
     volume_type = "gp3"
   }
 
+  user_data = <<-EOF
+#!/bin/bash
+dnf update -y
+dnf install -y curl awscli
+curl -sfL https://get.k3s.io | sh -
+chmod 644 /etc/rancher/k3s/k3s.yaml
+EOF
+
   tags = {
     Name = "ops3-minecraft"
   }

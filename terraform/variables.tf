@@ -13,7 +13,7 @@ variable "admin_cidr" {
 
 variable "instance_type" {
   type    = string
-  default = "t3.small"
+  default = "t3.medium"
 }
 
 variable "ecr_repo_name" {
