@@ -1,0 +1,59 @@
+name: Publish Minecraft Image
+
+on:
+  push:
+    tags:
+      - "mc-*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Check YAML files
+        run: |
+          python -m pip install yamllint
+          yamllint .github/workflows/deploy.yml k8s/*.yaml
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: Log in to ECR
+        run: |
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 533267036595.dkr.ecr.us-east-1.amazonaws.com
+
+      - name: Pull upstream Minecraft image
+        run: |
+          docker pull itzg/minecraft-server:java21
+
+      - name: Smoke test container
+        run: |
+          docker run -d --name mc-smoke \
+            -e EULA=TRUE \
+            -e VERSION=1.21.1 \
+            -e MEMORY=1G \
+            itzg/minecraft-server:java21
+
+          sleep 60
+
+          docker logs mc-smoke
+          docker logs mc-smoke | grep "Starting minecraft server version 1.21.1"
+
+          docker stop mc-smoke
+          docker rm mc-smoke
+
+      - name: Tag image for ECR
+        run: |
+          docker tag itzg/minecraft-server:java21 533267036595.dkr.ecr.us-east-1.amazonaws.com/ops3-minecraft:${GITHUB_REF_NAME}
+
+      - name: Push image to ECR
+        run: |
+          docker push 533267036595.dkr.ecr.us-east-1.amazonaws.com/ops3-minecraft:${GITHUB_REF_NAME}
